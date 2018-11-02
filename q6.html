@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title> q6 </title>
+	<script type="text/javascript" src="../lib/d3.v3.min.js"></script>
+	<script type="text/javascript" src="../lib/d3-queue.v3.min.js"></script>
+	<script type="text/javascript" src="../lib/topojson.v1.min.js"></script>
+	<script type="text/javascript" src="../lib/d3.tip.v0.6.3.js"></script>
+<style>
+
+	.states :hover {
+		opacity: .5;
+	}
+	
+	.states {
+		fill: gray;
+	}
+	
+	.tip {
+		line-height: 1;
+		padding: 4px;
+		background: rgba(0, 0, 0, 0.8);
+		color: #fff;
+		border-radius: 2px;
+	}
+
+</style>
+<svg width="1500" height="900"></svg>
+<script>
+	
+	var svg = d3.select("svg");
+	var path = d3.geo.path();
+	var hex_colors = ['#D42602', '#D44021', '#D45B40', '#D4755F', '#D4907E', '#D4AB9D', '#D4C5BC', '#D4E0DB', '#D5FBFB'].reverse()
+	var color = d3.scale.threshold()
+		.domain([13000, 16000, 19000, 22000, 25000, 28000, 31000, 34000, 37000])
+		.range(hex_colors);
+	
+	d3.queue()
+		.defer(d3.json, "us.json")
+		.defer(d3.json, "median_earnings.json")
+		.await(createMap);
+	
+	function createMap(error, us, earnings) {
+		
+		if (error) throw error;
+		
+		//Put earnings into a dictionary with id as key to be referenced later
+		var med_earnings = {};
+		for (i = 0; i < earnings.length; i++) {
+					med_earnings[earnings[i].id] = earnings[i].median_earnings}
+		
+		//Add Map and Color
+		svg.append("g")
+			.attr("class", "states")
+			.selectAll("path")
+			.data(topojson.feature(us, us.objects.states).features)
+			.enter().append("path")
+			.attr("fill", function(d) {
+					return color(med_earnings[d.id]);
+			})
+			.attr("d", path)
+			.attr("transform", "translate(400, 150)");
+		
+		//Add Title
+		svg.append("text")
+			.text("Median Earnings by State")
+			.attr("transform", "translate(700, 100)")
+			.attr("font-size", "22")
+			.attr("font-weight", "bold");
+		
+		//Add Legend
+		var legend = svg.selectAll(".legend")
+			.data(color.domain(), function(d) { return d; })
+            .enter().append("g")
+
+		legend.append("rect")
+			.attr("x", 50)
+			.attr("y", function(d, i) { return 50 * i; })
+			.attr("width", 50)
+			.attr("height", 50)
+			.style("fill", function(d, i) { return hex_colors[i]; });
+
+		legend.append("text")
+			.text(function(d) { return '$' + Math.round(d); })
+			.attr("x", 110)
+			.attr("y", function(d, i) { return 20 + 50 * i; })
+			.attr("font-size", "15px");
+		
+		//Add Tooltip
+		d3.csv("median_ages.csv", function(loadedRows) {
+			rows = loadedRows;
+			addToolTip(rows);
+		});
+		
+		function addToolTip(rows) {
+			
+			var tipDict = {};
+			var interDict = {};
+			var interNameDict = {};
+			var lowestFive = {};
+			
+			//Functions for Removing Smallest Value of Array (to be added to list of 5 lowest values)
+			
+			function indexOfSmallest(a) {
+				var lowest = 0;
+				for (var i = 1; i < a.length; i++) {
+					if (a[i] < a[lowest]) lowest = i;
+				}
+				return lowest;
+			}
+			
+			for (i = 0; i < 72; i++) {
+				interDict[i + 1] = [];
+				interNameDict[i + 1] = [];
+				lowestFive[i + 1] = [];
+			};
+			
+			for (i = 0; i < rows.length; i++) {
+				if (Math.floor(+rows[i].median_age) == +rows[i].median_age) {
+					rows[i].median_age = rows[i].median_age + '.0';
+				}
+				interNameDict[rows[i].id].push(rows[i].name);
+				interDict[rows[i].id].push(+rows[i].median_age);
+			}
+			
+			for (i = 0; i < rows.length; i++) {
+				for (k = 0; k < 5; k++) {
+					if(interDict[rows[i].id]) {
+						smallest = indexOfSmallest(interDict[rows[i].id]);
+						lowestFive[rows[i].id].push(interNameDict[rows[i].id][smallest] + " (Median Age: " + interDict[rows[i].id][smallest] + ")");
+						interNameDict[rows[i].id].splice(smallest, 1);
+						interDict[rows[i].id].splice(smallest, 1);
+					}
+				}
+			}
+			
+			//Create Dictionary with id Corresponding to All Counties and Median Age
+			for (i = 0; i < 72; i++) {
+				if(lowestFive[i]) {
+					for (j = 0; j < 5; j++) {
+						if (tipDict[i] && lowestFive[i][j]) {
+							tipDict[i] = tipDict[i] + '<br>' + lowestFive[i][j];
+						}
+						
+						else {
+							tipDict[i] = lowestFive[i][j];
+						}
+					}
+				}
+			}
+				
+			//Add Data to Tool Tip
+			var tip = d3.tip()
+				.attr('class', 'tip')
+				.direction('w')
+				.offset([100, 0])
+				.html(function(d) {
+					return tipDict[d.id]
+				});
+
+			svg.call(tip);
+			
+			//Show and Hide Tool Tip
+			svg.selectAll("path")
+				.on("mouseover", tip.show)
+				.on("mouseout", tip.hide);
+		}
+	}
+	
+
+</script>
+</body>
+</html>
